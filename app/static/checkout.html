@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkout demo — RetainIQ one-tap login</title>
+<link rel="stylesheet" href="/static/styles.css">
+<style>
+  body { background: #f7f5f2; }
+  .store-top { background: #fff; border-bottom: 1px solid var(--line); padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
+  .store-name { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  .riq { border: 2px solid var(--ink); border-radius: 12px; padding: 18px; background: #fff; }
+  .riq-btn { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
+  .item { display: grid; grid-template-columns: 54px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+  .thumb { width: 54px; height: 54px; border-radius: 8px; background: #e9edf3; display: grid; place-items: center; font-weight: 700; color: var(--ink-3); }
+  .owner { background: var(--ink); color: #dce6f5; border-radius: 12px; padding: 18px 20px; }
+  .owner h2 { color: #fff; }
+  .owner .cell-sub { color: #9fb0c9; }
+  .owner .tag { background: var(--ink-3); color: #fff; }
+  .rec { display: inline-block; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 0 8px 8px 0; background: #fff; }
+</style>
+</head>
+<body>
+<div class="store-top"><div class="store-name" id="sname">Store</div><div class="cell-sub">Demo storefront using the RetainIQ API · <a href="/">Back to dashboard</a></div></div>
+<div class="wrap">
+  <div>
+    <div class="panel"><h2>Your cart</h2><div id="cart"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:12px;font-size:16px"><b>Total</b><b id="total"></b></div></div>
+    <div class="panel" style="margin-top:18px"><h2>Delivery details</h2><p class="hint">Filled automatically after one-tap login</p>
+      <div class="grid g2">
+        <div class="field"><label class="f">Full name</label><input id="fname"></div>
+        <div class="field"><label class="f">Phone</label><input id="fphone"></div>
+      </div>
+      <div class="field"><label class="f">Email</label><input id="femail"></div>
+      <div class="field"><label class="f">Address</label><input id="faddr"></div>
+      <div id="recs"></div>
+      <button class="btn primary" id="place" style="margin-top:6px">Place order</button>
+    </div>
+  </div>
+  <div>
+    <div class="riq" id="riq">
+      <h2 style="margin-bottom:4px">Checkout faster with RetainIQ</h2>
+      <p class="hint">Enter your phone number. If you've shopped at any RetainIQ brand, we'll fill in your details.</p>
+      <div class="field"><input id="phone" placeholder="10-digit mobile number" inputmode="numeric" style="width:100%"></div>
+      <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:14px"><input type="checkbox" id="consent" style="margin-top:3px"> I agree to RetainIQ's Terms &amp; Privacy Policy and allow my RetainIQ profile to be shared with this store.</label>
+      <div id="newfields" style="display:none">
+        <div class="field"><input id="nname" placeholder="Your name" style="width:100%"></div>
+        <div class="field"><input id="nemail" placeholder="Email" style="width:100%"></div>
+        <div class="field"><input id="naddr" placeholder="Delivery address" style="width:100%"></div>
+      </div>
+      <div class="err" id="err"></div>
+      <button class="btn gold riq-btn" id="go">Continue with RetainIQ</button>
+      <div class="cell-sub" style="margin-top:10px" id="tip"></div>
+    </div>
+    <div class="owner" style="margin-top:18px" id="owner"><h2>What the store receives</h2><p class="cell-sub">The store's backend gets this from the RetainIQ API after login.</p><div id="ownerbody" class="cell-sub">Waiting for a customer to log in…</div></div>
+  </div>
+</div>
+<script src="/static/charts.js"></script>
+<script>
+const esc = Charts.esc;
+const CARTS = {
+  'Fashion E-commerce': [['Linen kurta', 1899], ['White sneakers', 2499]],
+  'Electronics': [['Wireless earbuds', 3499], ['Fast charger 65W', 1299]],
+  'Grocery Delivery': [['Fresh fruit box', 449], ['Breakfast combo', 389]],
+  'OTT Streaming': [['Premium plan (1 month)', 199]],
+  'Food Delivery': [['Paneer tikka bowl', 289], ['Gulab jamun (4)', 119]],
+  'Fitness': [['Monthly membership', 1200]],
+};
+let KEY = null, ME = null;
+const inr = v => '₹' + Math.round(v).toLocaleString('en-IN');
+(async () => {
+  const r = await fetch('/api/auth/me');
+  if (!r.ok) { document.body.innerHTML = '<div class="empty" style="padding:80px">Sign in to the <a href="/">RetainIQ dashboard</a> first — the demo store uses your business\'s API key.</div>'; return; }
+  ME = (await r.json()).business; KEY = ME.api_key;
+  sname.textContent = ME.name;
+  const items = CARTS[ME.category] || [['Item', 999]];
+  cart.innerHTML = items.map(([n, p]) => `<div class="item"><div class="thumb">${n[0]}</div><div><b>${esc(n)}</b><div class="cell-sub">Qty 1</div></div><div>${inr(p)}</div></div>`).join('');
+  total.textContent = inr(items.reduce((a, [, p]) => a + p, 0));
+  const s = await fetch('/api/customers?per=1&sort=risk').then(r => r.json()).catch(() => null);
+  if (s && s.rows && s.rows[0]) tip.innerHTML = `Demo tip: try phone <a href="#" id="tp">${esc(s.rows[0].phone)}</a> (an existing shopper) or any new number.`;
+  const tp = document.getElementById('tp'); if (tp) tp.onclick = e => { e.preventDefault(); phone.value = tp.textContent; };
+})();
+
+go.onclick = async () => {
+  err.textContent = '';
+  if (!/^\d{10}$/.test(phone.value.trim())) { err.textContent = 'Enter a 10-digit mobile number'; return; }
+  if (!consent.checked) { err.textContent = 'Please accept the terms to continue'; return; }
+  const body = { phone: phone.value.trim(), consent: true };
+  if (newfields.style.display !== 'none') Object.assign(body, { name: nname.value, email: nemail.value, address: naddr.value });
+  go.disabled = true; go.textContent = 'Checking…';
+  const r = await fetch('/api/v1/network-login', { method: 'POST', headers: { 'X-API-Key': KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  go.disabled = false; go.textContent = 'Continue with RetainIQ';
+  if (!r.ok) { err.textContent = d.error || 'Something went wrong'; return; }
+  if (!d.found) { newfields.style.display = 'block'; err.textContent = 'New to RetainIQ — add your name, email and address to create your profile.'; return; }
+  const p = d.person, per = d.persona;
+  fname.value = p.name || ''; fphone.value = p.phone || ''; femail.value = p.email || ''; faddr.value = p.address || '';
+  riq.innerHTML = `<h2>Welcome${d.new_person ? '' : ' back'}, ${esc(p.name.split(' ')[0])}</h2><p class="hint">${d.new_person ? 'Your RetainIQ profile is ready. Next time checkout takes one tap.' : 'Your details were filled from your RetainIQ profile.'}</p>`;
+  if (per) {
+    const recs = [...(per.next_interests || []).map(n => n.category), ...(per.interests || []).slice(0, 3).map(i => i.category)];
+    recs.length && (document.getElementById('recs').innerHTML = `<div class="sec-title">Picked for you</div>${[...new Set(recs)].slice(0, 5).map(c => `<span class="rec">${esc(c)}</span>`).join('')}`);
+    ownerbody.innerHTML = `
+      <div style="color:#fff;font-size:18px;font-weight:800">${esc(per.archetype)}</div>
+      <div style="margin:8px 0">${per.traits.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>
+      <div>Spend band <b style="color:#fff">${esc(per.spend_band)}</b> · loyalty <b style="color:#fff">${Math.round(per.loyalty_score)}/100</b> · price sensitivity <b style="color:#fff">${esc(per.price_sensitivity.level)}</b></div>
+      <div>Network churn tendency <b style="color:#fff">${Math.round(per.churn_tendency)}%</b> · shops with ${per.n_brands} brand(s)</div>
+      <div class="sec-title" style="color:#9fb0c9">Top interests</div><div>${per.interests.slice(0, 4).map(i => esc(i.category)).join(', ') || '—'}</div>
+      <div class="sec-title" style="color:#9fb0c9">Likely to buy next</div><div>${per.next_interests.map(i => esc(i.category)).join(', ') || '—'}</div>
+      ${per.with_you ? `<div class="sec-title" style="color:#9fb0c9">Churn risk with ${esc(ME.name)}</div><div><b style="color:#fff">${(per.with_you.churn_prob * 100).toFixed(0)}%</b> — ${esc(per.with_you.top_reason)}</div>` : ''}
+      <div class="sec-title" style="color:#9fb0c9">Suggested offer at checkout</div><div>${per.price_sensitivity.level === 'High' ? 'Show a 10% coupon — this shopper responds to discounts' : per.spend_band === 'Premium' ? 'Offer free express delivery and early access instead of a discount' : 'Show personalised recommendations; no discount needed'}</div>`;
+  } else {
+    ownerbody.innerHTML = 'New person — persona will be built after their first activity and the next agent run.';
+  }
+};
+place.onclick = () => { place.textContent = 'Order placed'; place.disabled = true; };
+</script>
+</body>
+</html>
