@@ -1,0 +1,4 @@
+data/*.db*
+models/*.pkl
+__pycache__/
+*.pyc
